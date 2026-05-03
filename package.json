@@ -1,0 +1,15 @@
+{
+  "name": "signalk-failback",
+  "version": "0.1.0",
+  "description": "SignalK plugin that publishes a fallback value when a monitored path/source stops being updated",
+  "main": "index.js",
+  "keywords": [
+    "signalk-node-server-plugin"
+  ],
+  "signalk-plugin-enabled-by-default": false,
+  "author": "macjl",
+  "license": "MIT",
+  "peerDependencies": {
+    "@signalk/server-api": "^2.0.0"
+  }
+}
