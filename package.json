@@ -11,5 +11,11 @@
   "license": "MIT",
   "peerDependencies": {
     "@signalk/server-api": "^2.0.0"
+  },
+  "scripts": {
+    "test": "jest --verbose"
+  },
+  "devDependencies": {
+    "jest": "^30.3.0"
   }
 }
