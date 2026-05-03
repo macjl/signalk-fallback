@@ -12,12 +12,14 @@ function makeApp() {
     streambundle: {
       getSelfBus(path) {
         if (!buses[path]) {
-          buses[path] = { subscribers: [], subscribe(fn) {
-            this.subscribers.push(fn)
-            return { unsubscribe: () => {
-              this.subscribers = this.subscribers.filter(s => s !== fn)
-            }}
-          }}
+          buses[path] = {
+            subscribers: [],
+            // mirrors BaconJS .onValue(): delivers raw pathValue, returns unsubscribe fn
+            onValue(fn) {
+              this.subscribers.push(fn)
+              return () => { this.subscribers = this.subscribers.filter(s => s !== fn) }
+            }
+          }
         }
         return buses[path]
       }
@@ -28,7 +30,7 @@ function makeApp() {
     // Helper: simulate an incoming delta on a path from a given source
     _emit(path, value, source = 'sensor.1') {
       const bus = buses[path]
-      if (bus) bus.subscribers.forEach(fn => fn({ value, source: { $source: source } }))
+      if (bus) bus.subscribers.forEach(fn => fn({ value, $source: source }))
     }
   }
 }

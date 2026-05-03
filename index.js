@@ -93,14 +93,14 @@ module.exports = function (app) {
         let lastUpdateTime = null
         let failbackActive = false
 
-        const subscription = app.streambundle
+        // .onValue() delivers the raw pathValue object { value, $source, timestamp, ... }
+        // .subscribe() would deliver a BaconJS Event wrapper — avoid it
+        const unsub = app.streambundle
           .getSelfBus(watchedPath)
-          .subscribe((sv) => {
-            // Ignore our own published values to avoid feedback loops
-            if (sv.source && sv.source.$source === plugin.id) return
+          .onValue((sv) => {
+            if (sv.$source === plugin.id) return
 
-            // Filter by source if configured
-            if (watchedSource && sv.source && sv.source.$source !== watchedSource) return
+            if (watchedSource && sv.$source !== watchedSource) return
 
             lastValue = sv.value
             lastUpdateTime = Date.now()
@@ -113,18 +113,18 @@ module.exports = function (app) {
             publishValue(outputPath, sv.value)
           })
 
-        unsubscribes.push(() => subscription.unsubscribe())
+        unsubscribes.push(unsub)
 
-        // Also subscribe to the fallback path to keep its value fresh
+        // Track the fallback path value in real time
         let fallbackPathValue = null
         if (fallbackType === 'otherPath' && fallbackPath) {
-          const fbSubscription = app.streambundle
+          const fbUnsub = app.streambundle
             .getSelfBus(fallbackPath)
-            .subscribe((sv) => {
-              if (sv.source && sv.source.$source === plugin.id) return
+            .onValue((sv) => {
+              if (sv.$source === plugin.id) return
               fallbackPathValue = sv.value
             })
-          unsubscribes.push(() => fbSubscription.unsubscribe())
+          unsubscribes.push(fbUnsub)
         }
 
         const timer = setInterval(() => {
