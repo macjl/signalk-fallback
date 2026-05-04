@@ -21,9 +21,11 @@ When moored, you may shut down some instruments (log, depth sounder…) while ke
 
 Configure the plugin to publish `navigation.speedThroughWater = 0` as soon as the log goes silent. True wind calculations keep running correctly, since a stationary boat does indeed have a speed of zero through the water.
 
-### Redundant GPS source
+### COG fallback to heading at low speed
 
-If your primary GPS stops sending data, the plugin can automatically fall back to a secondary GPS by reading `navigation.position` from a different `$source` — or from a completely different path — and republishing it on the expected output path. Your chart plotter, AIS transponder and autopilot keep receiving a position without any manual intervention.
+Most GPS receivers stop publishing a reliable **Course Over Ground** (`navigation.courseOverGroundTrue`) when the boat is stationary or moving very slowly, because COG is meaningless at zero SOG. However, some derived calculations (routing, autopilot, wind correction) expect a continuous COG value.
+
+Configure the plugin to substitute `navigation.headingTrue` for COG whenever the GPS goes silent on that path. When the boat is not moving, heading is the best available approximation of intended course.
 
 ### Keeping derived calculations alive at anchor
 
