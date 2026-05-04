@@ -44,7 +44,7 @@ module.exports = function (app) {
               interval: {
                 type: 'number',
                 title: 'Publish interval (seconds)',
-                description: 'How often to publish the failback value while source is inactive',
+                description: 'How often to publish the fallback value while source is inactive',
                 default: 10
               },
               fallbackType: {
@@ -53,17 +53,39 @@ module.exports = function (app) {
                 enum: ['fixed', 'lastKnown', 'otherPath'],
                 enumNames: ['Fixed value', 'Last known value', 'Other path value'],
                 default: 'lastKnown'
-              },
-              fixedValue: {
-                type: 'number',
-                title: 'Fixed value',
-                description: 'Value to publish when failback is active (used when type is "fixed")'
-              },
-              fallbackPath: {
-                type: 'string',
-                title: 'Fallback path',
-                description:
-                  'Path whose current value is used as fallback (used when type is "otherPath")'
+              }
+            },
+            dependencies: {
+              fallbackType: {
+                oneOf: [
+                  {
+                    properties: {
+                      fallbackType: { enum: ['lastKnown'] }
+                    }
+                  },
+                  {
+                    properties: {
+                      fallbackType: { enum: ['fixed'] },
+                      fixedValue: {
+                        type: 'number',
+                        title: 'Fixed value',
+                        description: 'Value to publish when failback is active'
+                      }
+                    },
+                    required: ['fixedValue']
+                  },
+                  {
+                    properties: {
+                      fallbackType: { enum: ['otherPath'] },
+                      fallbackPath: {
+                        type: 'string',
+                        title: 'Fallback path',
+                        description: 'Path whose current value is used as fallback'
+                      }
+                    },
+                    required: ['fallbackPath']
+                  }
+                ]
               }
             }
           }
