@@ -120,7 +120,7 @@ module.exports = function (app) {
         app.subscriptionmanager.subscribe(
           {
             context: 'vessels.self',
-            subscribe: [{ path: watchedPath, period: 1000 }],
+            subscribe: [{ path: watchedPath, period: 0 }],
             sourcePolicy: 'all'
           },
           unsubscribes,
@@ -150,7 +150,7 @@ module.exports = function (app) {
           app.subscriptionmanager.subscribe(
             {
               context: 'vessels.self',
-              subscribe: [{ path: fallbackPath, period: 1000 }],
+              subscribe: [{ path: fallbackPath, period: 0 }],
               sourcePolicy: 'all'
             },
             unsubscribes,
