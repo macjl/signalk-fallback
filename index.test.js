@@ -4,28 +4,35 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const createPlugin = require('./index')
 
-function makeApp(t) {
+function makeBusMap() {
   const buses = {}
+  function getBus(path) {
+    if (!buses[path]) {
+      buses[path] = {
+        subscribers: [],
+        onValue(fn) {
+          this.subscribers.push(fn)
+          return () => { this.subscribers = this.subscribers.filter(s => s !== fn) }
+        }
+      }
+    }
+    return buses[path]
+  }
+  return { buses, getBus }
+}
+
+// makeApp exposes getUnfilteredBus (SignalK v2+) by default.
+// Pass { legacy: true } to simulate an older server without it.
+function makeApp(t, { legacy = false } = {}) {
+  const { buses, getBus } = makeBusMap()
+  const streambundle = {
+    getSelfBus: getBus,
+    ...(!legacy && { getUnfilteredBus: getBus })
+  }
   return {
     debug: t.mock.fn(),
-
-    streambundle: {
-      getSelfBus(path) {
-        if (!buses[path]) {
-          buses[path] = {
-            subscribers: [],
-            onValue(fn) {
-              this.subscribers.push(fn)
-              return () => { this.subscribers = this.subscribers.filter(s => s !== fn) }
-            }
-          }
-        }
-        return buses[path]
-      }
-    },
-
+    streambundle,
     handleMessage: t.mock.fn(),
-
     _emit(path, value, source = 'sensor.1') {
       const bus = buses[path]
       if (bus) bus.subscribers.forEach(fn => fn({ value, $source: source }))
@@ -319,6 +326,63 @@ test('ignores its own published values to avoid feedback loops', (t) => {
   // lastValue is null (own message was ignored) → nothing published during failback
   t.mock.timers.tick(41_000)
   assert.strictEqual(published(app).length, 0)
+
+  plugin.stop()
+})
+
+// ─────────────────────────────────────────────
+// 11. Uses getUnfilteredBus when available
+// ─────────────────────────────────────────────
+test('uses getUnfilteredBus when available (sourcePolicy:all)', (t) => {
+  const app = makeApp(t)
+  assert.ok(typeof app.streambundle.getUnfilteredBus === 'function',
+    'mock should expose getUnfilteredBus')
+
+  const getUnfilteredBusCalls = []
+  const original = app.streambundle.getUnfilteredBus
+  app.streambundle.getUnfilteredBus = (path) => {
+    getUnfilteredBusCalls.push(path)
+    return original(path)
+  }
+  app.streambundle.getSelfBus = () => { throw new Error('getSelfBus should not be called') }
+
+  const plugin = createPlugin(app)
+  plugin.start({ rules: [{
+    watchedPath:  'navigation.speedOverGround',
+    timeout:      30,
+    interval:     10,
+    fallbackType: 'lastKnown'
+  }]})
+
+  assert.ok(getUnfilteredBusCalls.includes('navigation.speedOverGround'))
+
+  app._emit('navigation.speedOverGround', 2.0)
+  assert.deepStrictEqual(published(app), [
+    { path: 'navigation.speedOverGround', value: 2.0 }
+  ])
+
+  plugin.stop()
+})
+
+// ─────────────────────────────────────────────
+// 12. Falls back to getSelfBus on legacy servers
+// ─────────────────────────────────────────────
+test('falls back to getSelfBus on servers without getUnfilteredBus', (t) => {
+  const app = makeApp(t, { legacy: true })
+  assert.strictEqual(app.streambundle.getUnfilteredBus, undefined)
+
+  const plugin = createPlugin(app)
+  plugin.start({ rules: [{
+    watchedPath:  'navigation.speedOverGround',
+    timeout:      30,
+    interval:     10,
+    fallbackType: 'lastKnown'
+  }]})
+
+  app._emit('navigation.speedOverGround', 3.0)
+  assert.deepStrictEqual(published(app), [
+    { path: 'navigation.speedOverGround', value: 3.0 }
+  ])
 
   plugin.stop()
 })

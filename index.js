@@ -96,6 +96,14 @@ module.exports = function (app) {
     start: function (options) {
       const rules = (options && options.rules) || []
 
+      // Prefer getUnfilteredBus (SignalK v2+ with sourcePolicy:all) so that
+      // updates from every source reach the plugin regardless of configured
+      // source priorities. Falls back to getSelfBus on older servers.
+      const getBus = (path) =>
+        typeof app.streambundle.getUnfilteredBus === 'function'
+          ? app.streambundle.getUnfilteredBus(path)
+          : app.streambundle.getSelfBus(path)
+
       rules.forEach((rule) => {
         const {
           watchedPath,
@@ -115,37 +123,31 @@ module.exports = function (app) {
         let lastUpdateTime = null
         let failbackActive = false
 
-        // .onValue() delivers the raw pathValue object { value, $source, timestamp, ... }
-        // .subscribe() would deliver a BaconJS Event wrapper — avoid it
-        const unsub = app.streambundle
-          .getSelfBus(watchedPath)
-          .onValue((sv) => {
-            if (sv.$source === plugin.id) return
+        const unsub = getBus(watchedPath).onValue((sv) => {
+          if (sv.$source === plugin.id) return
 
-            if (watchedSource && sv.$source !== watchedSource) return
+          if (watchedSource && sv.$source !== watchedSource) return
 
-            lastValue = sv.value
-            lastUpdateTime = Date.now()
+          lastValue = sv.value
+          lastUpdateTime = Date.now()
 
-            if (failbackActive) {
-              failbackActive = false
-              app.debug(`[${watchedPath}] source restored, failback deactivated`)
-            }
+          if (failbackActive) {
+            failbackActive = false
+            app.debug(`[${watchedPath}] source restored, failback deactivated`)
+          }
 
-            publishValue(outputPath, sv.value)
-          })
+          publishValue(outputPath, sv.value)
+        })
 
         unsubscribes.push(unsub)
 
         // Track the fallback path value in real time
         let fallbackPathValue = null
         if (fallbackType === 'otherPath' && fallbackPath) {
-          const fbUnsub = app.streambundle
-            .getSelfBus(fallbackPath)
-            .onValue((sv) => {
-              if (sv.$source === plugin.id) return
-              fallbackPathValue = sv.value
-            })
+          const fbUnsub = getBus(fallbackPath).onValue((sv) => {
+            if (sv.$source === plugin.id) return
+            fallbackPathValue = sv.value
+          })
           unsubscribes.push(fbUnsub)
         }
 
