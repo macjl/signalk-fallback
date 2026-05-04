@@ -4,39 +4,31 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const createPlugin = require('./index')
 
-function makeBusMap() {
-  const buses = {}
-  function getBus(path) {
-    if (!buses[path]) {
-      buses[path] = {
-        subscribers: [],
-        onValue(fn) {
-          this.subscribers.push(fn)
-          return () => { this.subscribers = this.subscribers.filter(s => s !== fn) }
-        }
-      }
-    }
-    return buses[path]
-  }
-  return { buses, getBus }
-}
+function makeApp(t) {
+  const subscriptions = []  // { paths, sourcePolicy, deltaCb }
 
-// makeApp exposes getUnfilteredBus (SignalK v2+) by default.
-// Pass { legacy: true } to simulate an older server without it.
-function makeApp(t, { legacy = false } = {}) {
-  const { buses, getBus } = makeBusMap()
-  const streambundle = {
-    getSelfBus: getBus,
-    ...(!legacy && { getUnfilteredBus: getBus })
-  }
   return {
     debug: t.mock.fn(),
-    streambundle,
+    error: t.mock.fn(),
+
+    subscriptionmanager: {
+      subscribe(spec, unsubscribes, _errCb, deltaCb) {
+        const entry = { paths: spec.subscribe.map(s => s.path), sourcePolicy: spec.sourcePolicy, deltaCb }
+        subscriptions.push(entry)
+        unsubscribes.push(() => { const i = subscriptions.indexOf(entry); if (i !== -1) subscriptions.splice(i, 1) })
+      }
+    },
+
     handleMessage: t.mock.fn(),
+
     _emit(path, value, source = 'sensor.1') {
-      const bus = buses[path]
-      if (bus) bus.subscribers.forEach(fn => fn({ value, $source: source }))
-    }
+      const delta = { context: 'vessels.self', updates: [{ $source: source, values: [{ path, value }] }] }
+      subscriptions
+        .filter(s => s.paths.includes(path))
+        .forEach(s => s.deltaCb(delta))
+    },
+
+    _subscriptions: subscriptions
   }
 }
 
@@ -331,22 +323,12 @@ test('ignores its own published values to avoid feedback loops', (t) => {
 })
 
 // ─────────────────────────────────────────────
-// 11. Uses getUnfilteredBus when available
+// 11. Subscribes with sourcePolicy:'all'
 // ─────────────────────────────────────────────
-test('uses getUnfilteredBus when available (sourcePolicy:all)', (t) => {
+test('subscribes with sourcePolicy all', (t) => {
   const app = makeApp(t)
-  assert.ok(typeof app.streambundle.getUnfilteredBus === 'function',
-    'mock should expose getUnfilteredBus')
-
-  const getUnfilteredBusCalls = []
-  const original = app.streambundle.getUnfilteredBus
-  app.streambundle.getUnfilteredBus = (path) => {
-    getUnfilteredBusCalls.push(path)
-    return original(path)
-  }
-  app.streambundle.getSelfBus = () => { throw new Error('getSelfBus should not be called') }
-
   const plugin = createPlugin(app)
+
   plugin.start({ rules: [{
     watchedPath:  'navigation.speedOverGround',
     timeout:      30,
@@ -354,35 +336,31 @@ test('uses getUnfilteredBus when available (sourcePolicy:all)', (t) => {
     fallbackType: 'lastKnown'
   }]})
 
-  assert.ok(getUnfilteredBusCalls.includes('navigation.speedOverGround'))
-
-  app._emit('navigation.speedOverGround', 2.0)
-  assert.deepStrictEqual(published(app), [
-    { path: 'navigation.speedOverGround', value: 2.0 }
-  ])
+  const sub = app._subscriptions.find(s => s.paths.includes('navigation.speedOverGround'))
+  assert.ok(sub, 'subscription should exist')
+  assert.strictEqual(sub.sourcePolicy, 'all')
 
   plugin.stop()
 })
 
 // ─────────────────────────────────────────────
-// 12. Falls back to getSelfBus on legacy servers
+// 12. otherPath fallback path is also subscribed with sourcePolicy:'all'
 // ─────────────────────────────────────────────
-test('falls back to getSelfBus on servers without getUnfilteredBus', (t) => {
-  const app = makeApp(t, { legacy: true })
-  assert.strictEqual(app.streambundle.getUnfilteredBus, undefined)
-
+test('fallback path is subscribed with sourcePolicy all', (t) => {
+  const app = makeApp(t)
   const plugin = createPlugin(app)
+
   plugin.start({ rules: [{
     watchedPath:  'navigation.speedOverGround',
     timeout:      30,
     interval:     10,
-    fallbackType: 'lastKnown'
+    fallbackType: 'otherPath',
+    fallbackPath: 'navigation.speedThroughWater'
   }]})
 
-  app._emit('navigation.speedOverGround', 3.0)
-  assert.deepStrictEqual(published(app), [
-    { path: 'navigation.speedOverGround', value: 3.0 }
-  ])
+  const sub = app._subscriptions.find(s => s.paths.includes('navigation.speedThroughWater'))
+  assert.ok(sub, 'fallback path subscription should exist')
+  assert.strictEqual(sub.sourcePolicy, 'all')
 
   plugin.stop()
 })

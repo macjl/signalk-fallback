@@ -96,14 +96,6 @@ module.exports = function (app) {
     start: function (options) {
       const rules = (options && options.rules) || []
 
-      // Prefer getUnfilteredBus (SignalK v2+ with sourcePolicy:all) so that
-      // updates from every source reach the plugin regardless of configured
-      // source priorities. Falls back to getSelfBus on older servers.
-      const getBus = (path) =>
-        typeof app.streambundle.getUnfilteredBus === 'function'
-          ? app.streambundle.getUnfilteredBus(path)
-          : app.streambundle.getSelfBus(path)
-
       rules.forEach((rule) => {
         const {
           watchedPath,
@@ -123,32 +115,55 @@ module.exports = function (app) {
         let lastUpdateTime = null
         let failbackActive = false
 
-        const unsub = getBus(watchedPath).onValue((sv) => {
-          if (sv.$source === plugin.id) return
-
-          if (watchedSource && sv.$source !== watchedSource) return
-
-          lastValue = sv.value
-          lastUpdateTime = Date.now()
-
-          if (failbackActive) {
-            failbackActive = false
-            app.debug(`[${watchedPath}] source restored, failback deactivated`)
+        // sourcePolicy:'all' receives updates from every source regardless of
+        // configured source priorities. Silently ignored on servers < v2.x.
+        app.subscriptionmanager.subscribe(
+          {
+            context: 'vessels.self',
+            subscribe: [{ path: watchedPath, period: 1000 }],
+            sourcePolicy: 'all'
+          },
+          unsubscribes,
+          err => app.error(err),
+          delta => {
+            delta.updates.forEach(update => {
+              if (update.$source === plugin.id) return
+              if (watchedSource && update.$source !== watchedSource) return
+              update.values
+                .filter(pv => pv.path === watchedPath)
+                .forEach(pv => {
+                  lastValue = pv.value
+                  lastUpdateTime = Date.now()
+                  if (failbackActive) {
+                    failbackActive = false
+                    app.debug(`[${watchedPath}] source restored, failback deactivated`)
+                  }
+                  publishValue(outputPath, pv.value)
+                })
+            })
           }
-
-          publishValue(outputPath, sv.value)
-        })
-
-        unsubscribes.push(unsub)
+        )
 
         // Track the fallback path value in real time
         let fallbackPathValue = null
         if (fallbackType === 'otherPath' && fallbackPath) {
-          const fbUnsub = getBus(fallbackPath).onValue((sv) => {
-            if (sv.$source === plugin.id) return
-            fallbackPathValue = sv.value
-          })
-          unsubscribes.push(fbUnsub)
+          app.subscriptionmanager.subscribe(
+            {
+              context: 'vessels.self',
+              subscribe: [{ path: fallbackPath, period: 1000 }],
+              sourcePolicy: 'all'
+            },
+            unsubscribes,
+            err => app.error(err),
+            delta => {
+              delta.updates.forEach(update => {
+                if (update.$source === plugin.id) return
+                update.values
+                  .filter(pv => pv.path === fallbackPath)
+                  .forEach(pv => { fallbackPathValue = pv.value })
+              })
+            }
+          )
         }
 
         const timer = setInterval(() => {
