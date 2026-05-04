@@ -1,20 +1,19 @@
-jest.useFakeTimers()
+'use strict'
 
+const { test } = require('node:test')
+const assert = require('node:assert/strict')
 const createPlugin = require('./index')
 
-// Build a minimal mock of the SignalK app object
-function makeApp() {
+function makeApp(t) {
   const buses = {}
-
   return {
-    debug: jest.fn(),
+    debug: t.mock.fn(),
 
     streambundle: {
       getSelfBus(path) {
         if (!buses[path]) {
           buses[path] = {
             subscribers: [],
-            // mirrors BaconJS .onValue(): delivers raw pathValue, returns unsubscribe fn
             onValue(fn) {
               this.subscribers.push(fn)
               return () => { this.subscribers = this.subscribers.filter(s => s !== fn) }
@@ -25,9 +24,8 @@ function makeApp() {
       }
     },
 
-    handleMessage: jest.fn(),
+    handleMessage: t.mock.fn(),
 
-    // Helper: simulate an incoming delta on a path from a given source
     _emit(path, value, source = 'sensor.1') {
       const bus = buses[path]
       if (bus) bus.subscribers.forEach(fn => fn({ value, $source: source }))
@@ -35,18 +33,17 @@ function makeApp() {
   }
 }
 
-// Extract published values from handleMessage calls
 function published(app) {
   return app.handleMessage.mock.calls.map(
-    ([, delta]) => delta.updates[0].values[0]
+    call => call.arguments[1].updates[0].values[0]
   )
 }
 
 // ─────────────────────────────────────────────
 // 1. Source active → relay values
 // ─────────────────────────────────────────────
-test('relays incoming values to the output path', () => {
-  const app = makeApp()
+test('relays incoming values to the output path', (t) => {
+  const app = makeApp(t)
   const plugin = createPlugin(app)
 
   plugin.start({ rules: [{
@@ -60,8 +57,7 @@ test('relays incoming values to the output path', () => {
   app._emit('navigation.speedOverGround', 3.5)
   app._emit('navigation.speedOverGround', 4.2)
 
-  const vals = published(app)
-  expect(vals).toEqual([
+  assert.deepStrictEqual(published(app), [
     { path: 'navigation.speedOverGround', value: 3.5 },
     { path: 'navigation.speedOverGround', value: 4.2 }
   ])
@@ -72,8 +68,9 @@ test('relays incoming values to the output path', () => {
 // ─────────────────────────────────────────────
 // 2. Timeout → failback with fixed value
 // ─────────────────────────────────────────────
-test('publishes fixed fallback value after timeout', () => {
-  const app = makeApp()
+test('publishes fixed fallback value after timeout', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'Date'] })
+  const app = makeApp(t)
   const plugin = createPlugin(app)
 
   plugin.start({ rules: [{
@@ -84,14 +81,14 @@ test('publishes fixed fallback value after timeout', () => {
     fixedValue:   0
   }]})
 
-  // No signal at all — advance past timeout then one interval tick
-  jest.advanceTimersByTime(41_000)
+  // No signal — elapsed = Infinity > timeout from the first tick
+  t.mock.timers.tick(41_000)
 
   const vals = published(app)
-  expect(vals.length).toBeGreaterThan(0)
+  assert.ok(vals.length > 0)
   vals.forEach(v => {
-    expect(v.path).toBe('navigation.speedOverGround')
-    expect(v.value).toBe(0)
+    assert.strictEqual(v.path, 'navigation.speedOverGround')
+    assert.strictEqual(v.value, 0)
   })
 
   plugin.stop()
@@ -100,8 +97,9 @@ test('publishes fixed fallback value after timeout', () => {
 // ─────────────────────────────────────────────
 // 3. Timeout → failback with last known value
 // ─────────────────────────────────────────────
-test('publishes last known value after timeout', () => {
-  const app = makeApp()
+test('publishes last known value after timeout', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'Date'] })
+  const app = makeApp(t)
   const plugin = createPlugin(app)
 
   plugin.start({ rules: [{
@@ -111,15 +109,14 @@ test('publishes last known value after timeout', () => {
     fallbackType: 'lastKnown'
   }]})
 
-  // One good reading, then silence
   app._emit('navigation.speedOverGround', 5.1)
-  app.handleMessage.mockClear()
+  app.handleMessage.mock.resetCalls()
 
-  jest.advanceTimersByTime(41_000)
+  t.mock.timers.tick(41_000)
 
   const vals = published(app)
-  expect(vals.length).toBeGreaterThan(0)
-  vals.forEach(v => expect(v.value).toBe(5.1))
+  assert.ok(vals.length > 0)
+  vals.forEach(v => assert.strictEqual(v.value, 5.1))
 
   plugin.stop()
 })
@@ -127,8 +124,9 @@ test('publishes last known value after timeout', () => {
 // ─────────────────────────────────────────────
 // 4. Timeout → failback with another path value
 // ─────────────────────────────────────────────
-test('publishes value from fallback path after timeout', () => {
-  const app = makeApp()
+test('publishes value from fallback path after timeout', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'Date'] })
+  const app = makeApp(t)
   const plugin = createPlugin(app)
 
   plugin.start({ rules: [{
@@ -139,15 +137,14 @@ test('publishes value from fallback path after timeout', () => {
     fallbackPath: 'navigation.speedThroughWater'
   }]})
 
-  // Seed the fallback path
   app._emit('navigation.speedThroughWater', 4.8)
-  app.handleMessage.mockClear()
+  app.handleMessage.mock.resetCalls()
 
-  jest.advanceTimersByTime(41_000)
+  t.mock.timers.tick(41_000)
 
   const vals = published(app)
-  expect(vals.length).toBeGreaterThan(0)
-  vals.forEach(v => expect(v.value).toBe(4.8))
+  assert.ok(vals.length > 0)
+  vals.forEach(v => assert.strictEqual(v.value, 4.8))
 
   plugin.stop()
 })
@@ -155,8 +152,9 @@ test('publishes value from fallback path after timeout', () => {
 // ─────────────────────────────────────────────
 // 5. Source resumes → failback deactivates
 // ─────────────────────────────────────────────
-test('stops failback when source resumes and relays live values', () => {
-  const app = makeApp()
+test('stops failback when source resumes and relays live values', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'Date'] })
+  const app = makeApp(t)
   const plugin = createPlugin(app)
 
   plugin.start({ rules: [{
@@ -167,21 +165,16 @@ test('stops failback when source resumes and relays live values', () => {
     fixedValue:   0
   }]})
 
-  // Trigger failback
-  jest.advanceTimersByTime(41_000)
+  t.mock.timers.tick(41_000)
 
-  // Source resumes
-  app.handleMessage.mockClear()
+  app.handleMessage.mock.resetCalls()
   app._emit('navigation.speedOverGround', 6.0)
 
-  // One more interval — should NOT produce a fixed=0 publication
-  jest.advanceTimersByTime(10_000)
+  t.mock.timers.tick(10_000)
 
   const vals = published(app)
-  // The live relay must be present
-  expect(vals.some(v => v.value === 6.0)).toBe(true)
-  // No more fallback 0 values after resume
-  expect(vals.filter(v => v.value === 0)).toHaveLength(0)
+  assert.ok(vals.some(v => v.value === 6.0))
+  assert.strictEqual(vals.filter(v => v.value === 0).length, 0)
 
   plugin.stop()
 })
@@ -189,8 +182,9 @@ test('stops failback when source resumes and relays live values', () => {
 // ─────────────────────────────────────────────
 // 6. Source filter — ignore other sources
 // ─────────────────────────────────────────────
-test('ignores updates from sources not matching the filter', () => {
-  const app = makeApp()
+test('ignores updates from sources not matching the filter', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'Date'] })
+  const app = makeApp(t)
   const plugin = createPlugin(app)
 
   plugin.start({ rules: [{
@@ -202,15 +196,12 @@ test('ignores updates from sources not matching the filter', () => {
     fixedValue:    0
   }]})
 
-  // Update from a different source — should not count
   app._emit('navigation.speedOverGround', 3.0, 'gps.secondary')
-  app.handleMessage.mockClear()
+  app.handleMessage.mock.resetCalls()
 
-  jest.advanceTimersByTime(41_000)
+  t.mock.timers.tick(41_000)
 
-  const vals = published(app)
-  // Only fallback (fixed=0) should appear, not the filtered-out value
-  vals.forEach(v => expect(v.value).toBe(0))
+  published(app).forEach(v => assert.strictEqual(v.value, 0))
 
   plugin.stop()
 })
@@ -218,8 +209,8 @@ test('ignores updates from sources not matching the filter', () => {
 // ─────────────────────────────────────────────
 // 7. Source filter — accept matching source
 // ─────────────────────────────────────────────
-test('accepts updates from the configured source', () => {
-  const app = makeApp()
+test('accepts updates from the configured source', (t) => {
+  const app = makeApp(t)
   const plugin = createPlugin(app)
 
   plugin.start({ rules: [{
@@ -233,7 +224,7 @@ test('accepts updates from the configured source', () => {
 
   app._emit('navigation.speedOverGround', 3.0, 'gps.primary')
 
-  expect(published(app)).toEqual([
+  assert.deepStrictEqual(published(app), [
     { path: 'navigation.speedOverGround', value: 3.0 }
   ])
 
@@ -243,8 +234,9 @@ test('accepts updates from the configured source', () => {
 // ─────────────────────────────────────────────
 // 8. Interval controls publication frequency
 // ─────────────────────────────────────────────
-test('publishes at the configured interval during failback', () => {
-  const app = makeApp()
+test('publishes at the configured interval during failback', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] })
+  const app = makeApp(t)
   const plugin = createPlugin(app)
 
   plugin.start({ rules: [{
@@ -255,17 +247,12 @@ test('publishes at the configured interval during failback', () => {
     fixedValue:   99
   }]})
 
-  // Seed lastUpdateTime so the timeout countdown is well-defined
-  app._emit('navigation.speedOverGround', 1.0)
-  app.handleMessage.mockClear()
-
-  // Advance past timeout, then exactly 3 interval ticks
-  // Ticks at t=5s (skip, elapsed≤10), t=10s (skip, elapsed≤10),
-  // t=15s (publish), t=20s (publish), t=25s (publish)
-  jest.advanceTimersByTime(10_001 + 3 * 5_000)
+  // No emit → lastUpdateTime = null → elapsed = Infinity → failback active immediately
+  // Tick exactly 3 interval periods → exactly 3 callbacks
+  t.mock.timers.tick(3 * 5_000)
 
   const vals = published(app).filter(v => v.value === 99)
-  expect(vals.length).toBe(3)
+  assert.strictEqual(vals.length, 3)
 
   plugin.stop()
 })
@@ -273,8 +260,9 @@ test('publishes at the configured interval during failback', () => {
 // ─────────────────────────────────────────────
 // 9. Multiple independent rules
 // ─────────────────────────────────────────────
-test('handles multiple rules independently', () => {
-  const app = makeApp()
+test('handles multiple rules independently', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'Date'] })
+  const app = makeApp(t)
   const plugin = createPlugin(app)
 
   plugin.start({ rules: [
@@ -297,18 +285,15 @@ test('handles multiple rules independently', () => {
   ]})
 
   app._emit('navigation.speedOverGround', 5.0)
-  jest.advanceTimersByTime(41_000)
+  t.mock.timers.tick(41_000)
 
   const vals = published(app)
   const sogVals = vals.filter(v => v.path === 'navigation.speedOverGround')
   const hdgVals = vals.filter(v => v.path === 'navigation.headingTrue')
 
-  // SOG: 1 live relay + failback 0s
-  expect(sogVals.some(v => v.value === 5.0)).toBe(true)
-  expect(sogVals.some(v => v.value === 0)).toBe(true)
-
-  // Heading: only failback 180s (never received a live value)
-  expect(hdgVals.every(v => v.value === 180)).toBe(true)
+  assert.ok(sogVals.some(v => v.value === 5.0))
+  assert.ok(sogVals.some(v => v.value === 0))
+  assert.ok(hdgVals.every(v => v.value === 180))
 
   plugin.stop()
 })
@@ -316,8 +301,9 @@ test('handles multiple rules independently', () => {
 // ─────────────────────────────────────────────
 // 10. Plugin own messages are ignored (no loop)
 // ─────────────────────────────────────────────
-test('ignores its own published values to avoid feedback loops', () => {
-  const app = makeApp()
+test('ignores its own published values to avoid feedback loops', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'Date'] })
+  const app = makeApp(t)
   const plugin = createPlugin(app)
 
   plugin.start({ rules: [{
@@ -327,15 +313,12 @@ test('ignores its own published values to avoid feedback loops', () => {
     fallbackType: 'lastKnown'
   }]})
 
-  // Simulate the plugin receiving its own delta
   app._emit('navigation.speedOverGround', 7.7, 'signalk-failback')
-  app.handleMessage.mockClear()
+  app.handleMessage.mock.resetCalls()
 
-  // Should NOT have updated lastUpdateTime — failback must still kick in
-  jest.advanceTimersByTime(41_000)
-  const vals = published(app)
-  // lastValue is still null since own messages are ignored → nothing published
-  expect(vals).toHaveLength(0)
+  // lastValue is null (own message was ignored) → nothing published during failback
+  t.mock.timers.tick(41_000)
+  assert.strictEqual(published(app).length, 0)
 
   plugin.stop()
 })
