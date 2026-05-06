@@ -47,7 +47,6 @@ test('relays incoming values to the output path', (t) => {
 
   plugin.start({ rules: [{
     watchedPath: 'navigation.speedOverGround',
-    outputPath:  'navigation.speedOverGround',
     timeout:     30,
     interval:    10,
     fallbackType: 'lastKnown'
@@ -267,7 +266,6 @@ test('handles multiple rules independently', (t) => {
   plugin.start({ rules: [
     {
       watchedPath:  'navigation.speedOverGround',
-      outputPath:   'navigation.speedOverGround',
       timeout:      30,
       interval:     10,
       fallbackType: 'fixed',
@@ -275,7 +273,6 @@ test('handles multiple rules independently', (t) => {
     },
     {
       watchedPath:  'navigation.headingTrue',
-      outputPath:   'navigation.headingTrue',
       timeout:      30,
       interval:     10,
       fallbackType: 'fixed',

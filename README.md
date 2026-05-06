@@ -52,7 +52,6 @@ Rules are defined as an array. Each rule accepts the following parameters:
 |---|---|---|
 | `watchedPath` | — | SignalK path to monitor |
 | `watchedSource` | — | (Optional) Only consider updates from this `$source` |
-| `outputPath` | same as `watchedPath` | Path to publish the value to |
 | `timeout` | `30` s | Duration without update before failback activates |
 | `interval` | `10` s | How often to publish the fallback value while inactive |
 | `fallbackType` | `lastKnown` | `fixed`, `lastKnown`, or `otherPath` |
@@ -74,7 +73,6 @@ Rules are defined as an array. Each rule accepts the following parameters:
     {
       "watchedPath": "navigation.speedOverGround",
       "watchedSource": "gps.primary",
-      "outputPath": "navigation.speedOverGround",
       "timeout": 15,
       "interval": 5,
       "fallbackType": "otherPath",

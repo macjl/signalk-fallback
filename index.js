@@ -29,12 +29,6 @@ module.exports = function (app) {
                 description:
                   'If set, only consider updates from this source ($source identifier)'
               },
-              outputPath: {
-                type: 'string',
-                title: 'Output path (optional)',
-                description:
-                  'Path to publish the value to. Defaults to the watched path if left empty.'
-              },
               timeout: {
                 type: 'number',
                 title: 'Timeout (seconds)',
@@ -107,10 +101,6 @@ module.exports = function (app) {
           fallbackPath
         } = rule
 
-        const outputPath = rule.outputPath && rule.outputPath.trim() !== ''
-          ? rule.outputPath.trim()
-          : watchedPath
-
         let lastValue = null
         let lastUpdateTime = null
         let failbackActive = false
@@ -138,7 +128,7 @@ module.exports = function (app) {
                     failbackActive = false
                     app.debug(`[${watchedPath}] source restored, failback deactivated`)
                   }
-                  publishValue(outputPath, pv.value)
+                  publishValue(watchedPath, pv.value)
                 })
             })
           }
@@ -191,7 +181,7 @@ module.exports = function (app) {
           }
 
           if (value !== null && value !== undefined) {
-            publishValue(outputPath, value)
+            publishValue(watchedPath, value)
           }
         }, interval * 1000)
 
