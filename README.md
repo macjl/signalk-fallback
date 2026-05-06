@@ -1,17 +1,17 @@
-# signalk-failback
+# signalk-fallback
 
 SignalK plugin that monitors a path/source and publishes a fallback value when no update has been received within a configurable timeout.
 
 ## Features
 
 - Monitors any SignalK path, optionally filtered by source (`$source` identifier)
-- Activates failback when no update is received within the configured timeout
-- Three failback modes:
+- Activates fallback when no update is received within the configured timeout
+- Three fallback modes:
   - **Fixed value** — publish a constant
   - **Last known value** — republish the last received value
   - **Other path** — use the current value of another SignalK path
 - Multiple independent rules can run simultaneously
-- Automatically deactivates failback when the source resumes
+- Automatically deactivates fallback when the source resumes
 
 ## Use cases
 
@@ -37,11 +37,11 @@ If a sensor unexpectedly stops transmitting (hardware fault, NMEA bus issue), th
 
 ## Installation
 
-From the SignalK admin UI → Plugin Store, search for `signalk-failback`.
+From the SignalK admin UI → Plugin Store, search for `signalk-fallback`.
 
 Or manually:
 ```bash
-npm install signalk-failback
+npm install signalk-fallback
 ```
 
 ## Configuration
@@ -52,7 +52,7 @@ Rules are defined as an array. Each rule accepts the following parameters:
 |---|---|---|
 | `watchedPath` | — | SignalK path to monitor |
 | `watchedSource` | — | (Optional) Only consider updates from this `$source` |
-| `timeout` | `30` s | Duration without update before failback activates |
+| `timeout` | `30` s | Duration without update before fallback activates |
 | `interval` | `10` s | How often to publish the fallback value while inactive |
 | `fallbackType` | `lastKnown` | `fixed`, `lastKnown`, or `otherPath` |
 | `fixedValue` | — | Value to publish when type is `fixed` |

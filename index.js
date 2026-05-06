@@ -3,7 +3,7 @@ module.exports = function (app) {
   let timers = []
 
   const plugin = {
-    id: 'signalk-failback',
+    id: 'signalk-fallback',
     name: 'SignalK Failback',
     description:
       'Publishes a fallback value when a monitored path/source stops being updated',
@@ -32,7 +32,7 @@ module.exports = function (app) {
               timeout: {
                 type: 'number',
                 title: 'Timeout (seconds)',
-                description: 'Duration without update before failback activates',
+                description: 'Duration without update before fallback activates',
                 default: 30
               },
               interval: {
@@ -63,7 +63,7 @@ module.exports = function (app) {
                       fixedValue: {
                         type: 'number',
                         title: 'Fixed value',
-                        description: 'Value to publish when failback is active'
+                        description: 'Value to publish when fallback is active'
                       }
                     },
                     required: ['fixedValue']
@@ -103,7 +103,7 @@ module.exports = function (app) {
 
         let lastValue = null
         let lastUpdateTime = null
-        let failbackActive = false
+        let fallbackActive = false
 
         // sourcePolicy:'all' receives updates from every source regardless of
         // configured source priorities. Silently ignored on servers < v2.x.
@@ -124,9 +124,9 @@ module.exports = function (app) {
                 .forEach(pv => {
                   lastValue = pv.value
                   lastUpdateTime = Date.now()
-                  if (failbackActive) {
-                    failbackActive = false
-                    app.debug(`[${watchedPath}] source restored, failback deactivated`)
+                  if (fallbackActive) {
+                    fallbackActive = false
+                    app.debug(`[${watchedPath}] source restored, fallback deactivated`)
                   }
                   publishValue(watchedPath, pv.value)
                 })
@@ -164,10 +164,10 @@ module.exports = function (app) {
 
           if (elapsed <= timeout) return
 
-          if (!failbackActive) {
-            failbackActive = true
+          if (!fallbackActive) {
+            fallbackActive = true
             app.debug(
-              `[${watchedPath}] no update for ${elapsed.toFixed(1)}s — failback activated`
+              `[${watchedPath}] no update for ${elapsed.toFixed(1)}s — fallback activated`
             )
           }
 

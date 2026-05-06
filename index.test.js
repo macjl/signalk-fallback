@@ -64,7 +64,7 @@ test('relays incoming values to the output path', (t) => {
 })
 
 // ─────────────────────────────────────────────
-// 2. Timeout → failback with fixed value
+// 2. Timeout → fallback with fixed value
 // ─────────────────────────────────────────────
 test('publishes fixed fallback value after timeout', (t) => {
   t.mock.timers.enable({ apis: ['setInterval', 'Date'] })
@@ -93,7 +93,7 @@ test('publishes fixed fallback value after timeout', (t) => {
 })
 
 // ─────────────────────────────────────────────
-// 3. Timeout → failback with last known value
+// 3. Timeout → fallback with last known value
 // ─────────────────────────────────────────────
 test('publishes last known value after timeout', (t) => {
   t.mock.timers.enable({ apis: ['setInterval', 'Date'] })
@@ -120,7 +120,7 @@ test('publishes last known value after timeout', (t) => {
 })
 
 // ─────────────────────────────────────────────
-// 4. Timeout → failback with another path value
+// 4. Timeout → fallback with another path value
 // ─────────────────────────────────────────────
 test('publishes value from fallback path after timeout', (t) => {
   t.mock.timers.enable({ apis: ['setInterval', 'Date'] })
@@ -148,9 +148,9 @@ test('publishes value from fallback path after timeout', (t) => {
 })
 
 // ─────────────────────────────────────────────
-// 5. Source resumes → failback deactivates
+// 5. Source resumes → fallback deactivates
 // ─────────────────────────────────────────────
-test('stops failback when source resumes and relays live values', (t) => {
+test('stops fallback when source resumes and relays live values', (t) => {
   t.mock.timers.enable({ apis: ['setInterval', 'Date'] })
   const app = makeApp(t)
   const plugin = createPlugin(app)
@@ -232,7 +232,7 @@ test('accepts updates from the configured source', (t) => {
 // ─────────────────────────────────────────────
 // 8. Interval controls publication frequency
 // ─────────────────────────────────────────────
-test('publishes at the configured interval during failback', (t) => {
+test('publishes at the configured interval during fallback', (t) => {
   t.mock.timers.enable({ apis: ['setInterval'] })
   const app = makeApp(t)
   const plugin = createPlugin(app)
@@ -245,7 +245,7 @@ test('publishes at the configured interval during failback', (t) => {
     fixedValue:   99
   }]})
 
-  // No emit → lastUpdateTime = null → elapsed = Infinity → failback active immediately
+  // No emit → lastUpdateTime = null → elapsed = Infinity → fallback active immediately
   // Tick exactly 3 interval periods → exactly 3 callbacks
   t.mock.timers.tick(3 * 5_000)
 
@@ -309,10 +309,10 @@ test('ignores its own published values to avoid feedback loops', (t) => {
     fallbackType: 'lastKnown'
   }]})
 
-  app._emit('navigation.speedOverGround', 7.7, 'signalk-failback')
+  app._emit('navigation.speedOverGround', 7.7, 'signalk-fallback')
   app.handleMessage.mock.resetCalls()
 
-  // lastValue is null (own message was ignored) → nothing published during failback
+  // lastValue is null (own message was ignored) → nothing published during fallback
   t.mock.timers.tick(41_000)
   assert.strictEqual(published(app).length, 0)
 

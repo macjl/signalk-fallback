@@ -1,12 +1,11 @@
 {
-  "name": "signalk-failback",
+  "name": "signalk-fallback",
   "version": "0.1.0",
   "description": "SignalK plugin that publishes a fallback value when a monitored path/source stops being updated",
   "main": "index.js",
   "keywords": [
     "signalk-node-server-plugin",
     "signalk",
-    "failback",
     "fallback",
     "watchdog",
     "marine"
@@ -15,12 +14,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/macjl/signalk-failback.git"
+    "url": "git+https://github.com/macjl/signalk-fallback.git"
   },
   "bugs": {
-    "url": "https://github.com/macjl/signalk-failback/issues"
+    "url": "https://github.com/macjl/signalk-fallback/issues"
   },
-  "homepage": "https://github.com/macjl/signalk-failback#readme",
+  "homepage": "https://github.com/macjl/signalk-fallback#readme",
   "scripts": {
     "test": "node --test"
   },
