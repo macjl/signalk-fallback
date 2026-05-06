@@ -82,6 +82,10 @@ Rules are defined as an array. Each rule accepts the following parameters:
 }
 ```
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
 MIT
