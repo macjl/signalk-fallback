@@ -13,27 +13,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          persist-credentials: true
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org/
-      - name: Sync package.json version with tag
+      - name: Verify package.json version matches tag
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           CURRENT=$(node -p "require('./package.json').version")
           if [ "$VERSION" != "$CURRENT" ]; then
-            npm version "$VERSION" --no-git-tag-version
-            git config user.name "GitHub Actions"
-            git config user.email "actions@github.com"
-            git add package.json package-lock.json 2>/dev/null || git add package.json
-            git commit -m "Sync package version with release tag $VERSION"
-            git push origin HEAD:${{ github.event.repository.default_branch }}
-          else
-            echo "Version already at $VERSION, skipping sync"
+            echo "Error: tag $GITHUB_REF_NAME does not match package.json version ($CURRENT)."
+            echo "Update package.json to version $VERSION and commit before pushing this tag."
+            exit 1
           fi
+          echo "Version check passed: $VERSION"
       - name: Install dependencies
         run: |
           if [ -f package-lock.json ]; then

@@ -4,7 +4,7 @@ module.exports = function (app) {
 
   const plugin = {
     id: 'signalk-fallback',
-    name: 'SignalK Failback',
+    name: 'SignalK Fallback',
     description:
       'Publishes a fallback value when a monitored path/source stops being updated',
 
@@ -61,9 +61,9 @@ module.exports = function (app) {
                     properties: {
                       fallbackType: { enum: ['fixed'] },
                       fixedValue: {
-                        type: 'number',
+                        type: 'string',
                         title: 'Fixed value',
-                        description: 'Value to publish when fallback is active'
+                        description: 'Value to publish when fallback is active. Enter a number (e.g. 0), a boolean (true/false), or a quoted string (e.g. "moored"). Parsed as JSON.'
                       }
                     },
                     required: ['fixedValue']
@@ -173,7 +173,13 @@ module.exports = function (app) {
 
           let value = null
           if (fallbackType === 'fixed') {
-            value = fixedValue !== undefined ? fixedValue : null
+            if (fixedValue !== undefined) {
+              if (typeof fixedValue === 'string') {
+                try { value = JSON.parse(fixedValue) } catch { value = fixedValue }
+              } else {
+                value = fixedValue
+              }
+            }
           } else if (fallbackType === 'lastKnown') {
             value = lastValue
           } else if (fallbackType === 'otherPath') {
