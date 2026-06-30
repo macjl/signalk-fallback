@@ -23,11 +23,14 @@ module.exports = function (app) {
                 title: 'Path to monitor',
                 description: 'SignalK path to watch for updates (e.g. navigation.speedOverGround)'
               },
-              watchedSource: {
+              sourceSelection: {
                 type: 'string',
-                title: 'Source filter (optional)',
+                title: 'Source selection',
+                enum: ['preferred', 'specific'],
+                enumNames: ['Signal K source priorities', 'Specific source'],
+                default: 'preferred',
                 description:
-                  'If set, only consider updates from this source ($source identifier)'
+                  'Choose whether to monitor the preferred source selected by Signal K priorities, or one specific $source.'
               },
               timeout: {
                 type: 'number',
@@ -50,6 +53,26 @@ module.exports = function (app) {
               }
             },
             dependencies: {
+              sourceSelection: {
+                oneOf: [
+                  {
+                    properties: {
+                      sourceSelection: { enum: ['preferred'] }
+                    }
+                  },
+                  {
+                    properties: {
+                      sourceSelection: { enum: ['specific'] },
+                      watchedSource: {
+                        type: 'string',
+                        title: 'Specific source',
+                        description: '$source identifier to monitor'
+                      }
+                    },
+                    required: ['watchedSource']
+                  }
+                ]
+              },
               fallbackType: {
                 oneOf: [
                   {
@@ -87,6 +110,23 @@ module.exports = function (app) {
       }
     },
 
+    uiSchema: {
+      rules: {
+        items: {
+          'ui:order': [
+            'watchedPath',
+            'sourceSelection',
+            'watchedSource',
+            'timeout',
+            'interval',
+            'fallbackType',
+            'fixedValue',
+            'fallbackPath'
+          ]
+        }
+      }
+    },
+
     start: function (options) {
       const rules = (options && options.rules) || []
 
@@ -94,6 +134,7 @@ module.exports = function (app) {
         const {
           watchedPath,
           watchedSource,
+          sourceSelection: configuredSourceSelection,
           timeout = 30,
           interval = 10,
           fallbackType = 'lastKnown',
@@ -104,21 +145,27 @@ module.exports = function (app) {
         let lastValue = null
         let lastUpdateTime = null
         let fallbackActive = false
+        const sourceSelection =
+          configuredSourceSelection || (watchedSource ? 'specific' : 'preferred')
+        const effectiveWatchedSource =
+          sourceSelection === 'specific' ? watchedSource : undefined
 
-        // sourcePolicy:'all' receives updates from every source regardless of
-        // configured source priorities. Silently ignored on servers < v2.x.
+        // Preferred-source rules should follow Signal K source
+        // priorities while excluding this plugin's own republished value.
+        // Specific-source rules need sourcePolicy:'all', otherwise a
+        // non-preferred explicitly configured source may never be delivered.
         app.subscriptionmanager.subscribe(
           {
             context: 'vessels.self',
             subscribe: [{ path: watchedPath, period: 0 }],
-            sourcePolicy: 'all'
+            ...getSourceSubscriptionOptions(sourceSelection, watchedSource)
           },
           unsubscribes,
           err => app.error(err),
           delta => {
             delta.updates.forEach(update => {
               if (update.$source === plugin.id) return
-              if (watchedSource && update.$source !== watchedSource) return
+              if (effectiveWatchedSource && update.$source !== effectiveWatchedSource) return
               update.values
                 .filter(pv => pv.path === watchedPath)
                 .forEach(pv => {
@@ -141,7 +188,8 @@ module.exports = function (app) {
             {
               context: 'vessels.self',
               subscribe: [{ path: fallbackPath, period: 0 }],
-              sourcePolicy: 'all'
+              sourcePolicy: 'preferred',
+              excludeSelf: true
             },
             unsubscribes,
             err => app.error(err),
@@ -202,6 +250,13 @@ module.exports = function (app) {
             }
           ]
         })
+      }
+
+      function getSourceSubscriptionOptions(sourceSelection, watchedSource) {
+        if (sourceSelection === 'specific' && watchedSource) {
+          return { sourcePolicy: 'all' }
+        }
+        return { sourcePolicy: 'preferred', excludeSelf: true }
       }
     },
 

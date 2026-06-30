@@ -15,11 +15,20 @@ SignalK plugin that monitors a path/source and publishes a fallback value when n
 
 ## How it works
 
-The plugin acts as a **transparent relay**: it republishes every incoming update from the monitored path under its own source identifier (`signalk-fallback`). This means the `signalk-fallback` source is always up-to-date during normal operation, and keeps publishing (with the fallback value) when the real source goes silent. The transition is seamless — there is no gap between live and fallback mode.
+The plugin acts as a **transparent relay**: it republishes incoming updates from the monitored path under its own source identifier (`signalk-fallback`). This means the `signalk-fallback` source is always up-to-date during normal operation, and keeps publishing (with the fallback value) when the real source goes silent. The transition is seamless — there is no gap between live and fallback mode.
+
+Each rule can choose how the monitored source is selected:
+
+- `sourceSelection: "preferred"` subscribes with Signal K's preferred source cascade and `excludeSelf: true`, so it follows the user's source priorities while ignoring the plugin's own output on the same path.
+- `sourceSelection: "specific"` subscribes with `sourcePolicy: "all"` and only accepts updates from `watchedSource`, because an explicitly requested source may not be the preferred one.
+
+For backward compatibility, older rules that set `watchedSource` but do not set `sourceSelection` are treated as `sourceSelection: "specific"`.
 
 As a consequence, the Signal K data model will contain two sources for each monitored path: the original source and `signalk-fallback`. To ensure downstream consumers see the plugin's values, configure Signal K's **source priorities** to prefer `signalk-fallback` for those paths.
 
 > **Startup behaviour**: if the plugin starts before a monitored path has received any update, the fallback activates immediately (elapsed time is treated as infinite). This is by design — the plugin cannot distinguish between a slow sensor and an absent one at startup.
+
+> **Compatibility**: `excludeSelf` requires a Signal K server version that supports `excludeSources` / `excludeSelf` on subscribe messages. On older servers, specific-source rules keep their previous `sourcePolicy: "all"` behaviour, but preferred-source rules rely on server-side `excludeSelf` to avoid seeing the plugin's own preferred output.
 
 ## Use cases
 
@@ -59,7 +68,8 @@ Rules are defined as an array. Each rule accepts the following parameters:
 | Parameter | Default | Description |
 |---|---|---|
 | `watchedPath` | — | SignalK path to monitor |
-| `watchedSource` | — | (Optional) Only consider updates from this `$source` |
+| `sourceSelection` | `preferred` | Source selection mode: `preferred` uses Signal K source priorities, `specific` monitors only `watchedSource` |
+| `watchedSource` | — | `$source` identifier to monitor when `sourceSelection` is `specific` |
 | `timeout` | `30` s | Duration without update before fallback activates |
 | `interval` | `10` s | How often to publish the fallback value while inactive |
 | `fallbackType` | `lastKnown` | `fixed`, `lastKnown`, or `otherPath` |
@@ -80,6 +90,7 @@ Rules are defined as an array. Each rule accepts the following parameters:
     },
     {
       "watchedPath": "navigation.speedOverGround",
+      "sourceSelection": "specific",
       "watchedSource": "gps.primary",
       "timeout": 15,
       "interval": 5,

@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- Add `sourceSelection` to choose between Signal K priority-based source selection and a specific `$source`.
+
+### Changed
+- Subscribe without `watchedSource` using `sourcePolicy: 'preferred'` and `excludeSelf: true` so unfiltered rules follow Signal K source priorities while excluding the plugin's own output.
+- Keep `sourcePolicy: 'all'` for rules with `watchedSource`, preserving access to explicitly configured non-preferred sources.
+
 ## [0.1.0] - 2026-05-06
 
 ### Added

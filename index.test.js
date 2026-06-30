@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const createPlugin = require('./index')
 
 function makeApp(t) {
-  const subscriptions = []  // { paths, sourcePolicy, deltaCb }
+  const subscriptions = []  // { paths, sourcePolicy, excludeSelf, deltaCb }
 
   return {
     debug: t.mock.fn(),
@@ -13,7 +13,12 @@ function makeApp(t) {
 
     subscriptionmanager: {
       subscribe(spec, unsubscribes, _errCb, deltaCb) {
-        const entry = { paths: spec.subscribe.map(s => s.path), sourcePolicy: spec.sourcePolicy, deltaCb }
+        const entry = {
+          paths: spec.subscribe.map(s => s.path),
+          sourcePolicy: spec.sourcePolicy,
+          excludeSelf: spec.excludeSelf,
+          deltaCb
+        }
         subscriptions.push(entry)
         unsubscribes.push(() => { const i = subscriptions.indexOf(entry); if (i !== -1) subscriptions.splice(i, 1) })
       }
@@ -37,6 +42,34 @@ function published(app) {
     call => call.arguments[1].updates[0].values[0]
   )
 }
+
+// ─────────────────────────────────────────────
+// 0. Configuration schema
+// ─────────────────────────────────────────────
+test('shows specific source only under specific source selection', (t) => {
+  const app = makeApp(t)
+  const plugin = createPlugin(app)
+  const ruleSchema = plugin.schema.properties.rules.items
+  const properties = ruleSchema.properties
+  const sourceSelectionDependency = ruleSchema.dependencies.sourceSelection
+  const specificSourceBranch = sourceSelectionDependency.oneOf.find(
+    branch => branch.properties.sourceSelection.enum.includes('specific')
+  )
+
+  assert.deepStrictEqual(Object.keys(properties).slice(0, 2), [
+    'watchedPath',
+    'sourceSelection'
+  ])
+  assert.strictEqual(properties.watchedSource, undefined)
+  assert.ok(specificSourceBranch, 'specific source branch should exist')
+  assert.ok(specificSourceBranch.properties.watchedSource)
+  assert.deepStrictEqual(specificSourceBranch.required, ['watchedSource'])
+  assert.deepStrictEqual(plugin.uiSchema.rules.items['ui:order'].slice(0, 3), [
+    'watchedPath',
+    'sourceSelection',
+    'watchedSource'
+  ])
+})
 
 // ─────────────────────────────────────────────
 // 1. Source active → relay values
@@ -320,9 +353,9 @@ test('ignores its own published values to avoid feedback loops', (t) => {
 })
 
 // ─────────────────────────────────────────────
-// 11. Subscribes with sourcePolicy:'all'
+// 11. Rules without source filter use preferred cascade excluding self
 // ─────────────────────────────────────────────
-test('subscribes with sourcePolicy all', (t) => {
+test('subscribes without source filter using preferred sourcePolicy and excludeSelf', (t) => {
   const app = makeApp(t)
   const plugin = createPlugin(app)
 
@@ -335,15 +368,93 @@ test('subscribes with sourcePolicy all', (t) => {
 
   const sub = app._subscriptions.find(s => s.paths.includes('navigation.speedOverGround'))
   assert.ok(sub, 'subscription should exist')
-  assert.strictEqual(sub.sourcePolicy, 'all')
+  assert.strictEqual(sub.sourcePolicy, 'preferred')
+  assert.strictEqual(sub.excludeSelf, true)
 
   plugin.stop()
 })
 
 // ─────────────────────────────────────────────
-// 12. otherPath fallback path is also subscribed with sourcePolicy:'all'
+// 12. Legacy rules with source filter keep all sources available
 // ─────────────────────────────────────────────
-test('fallback path is subscribed with sourcePolicy all', (t) => {
+test('subscribes with sourcePolicy all when watchedSource is configured without sourceSelection', (t) => {
+  const app = makeApp(t)
+  const plugin = createPlugin(app)
+
+  plugin.start({ rules: [{
+    watchedPath:   'navigation.speedOverGround',
+    watchedSource: 'gps.primary',
+    timeout:       30,
+    interval:      10,
+    fallbackType:  'lastKnown'
+  }]})
+
+  const sub = app._subscriptions.find(s => s.paths.includes('navigation.speedOverGround'))
+  assert.ok(sub, 'subscription should exist')
+  assert.strictEqual(sub.sourcePolicy, 'all')
+  assert.strictEqual(sub.excludeSelf, undefined)
+
+  plugin.stop()
+})
+
+// ─────────────────────────────────────────────
+// 13. Explicit specific source selection keeps all sources available
+// ─────────────────────────────────────────────
+test('subscribes with sourcePolicy all when specific source selection is configured', (t) => {
+  const app = makeApp(t)
+  const plugin = createPlugin(app)
+
+  plugin.start({ rules: [{
+    watchedPath:     'navigation.speedOverGround',
+    sourceSelection: 'specific',
+    watchedSource:   'gps.primary',
+    timeout:         30,
+    interval:        10,
+    fallbackType:    'lastKnown'
+  }]})
+
+  const sub = app._subscriptions.find(s => s.paths.includes('navigation.speedOverGround'))
+  assert.ok(sub, 'subscription should exist')
+  assert.strictEqual(sub.sourcePolicy, 'all')
+  assert.strictEqual(sub.excludeSelf, undefined)
+
+  plugin.stop()
+})
+
+// ─────────────────────────────────────────────
+// 14. Explicit preferred source selection ignores stale watchedSource
+// ─────────────────────────────────────────────
+test('uses preferred source selection even when watchedSource remains configured', (t) => {
+  const app = makeApp(t)
+  const plugin = createPlugin(app)
+
+  plugin.start({ rules: [{
+    watchedPath:     'navigation.speedOverGround',
+    sourceSelection: 'preferred',
+    watchedSource:   'gps.primary',
+    timeout:         30,
+    interval:        10,
+    fallbackType:    'lastKnown'
+  }]})
+
+  const sub = app._subscriptions.find(s => s.paths.includes('navigation.speedOverGround'))
+  assert.ok(sub, 'subscription should exist')
+  assert.strictEqual(sub.sourcePolicy, 'preferred')
+  assert.strictEqual(sub.excludeSelf, true)
+
+  app._emit('navigation.speedOverGround', 4.4, 'gps.secondary')
+
+  assert.deepStrictEqual(published(app), [
+    { path: 'navigation.speedOverGround', value: 4.4 }
+  ])
+
+  plugin.stop()
+})
+
+// ─────────────────────────────────────────────
+// 15. otherPath fallback path uses preferred cascade excluding self
+// ─────────────────────────────────────────────
+test('fallback path is subscribed with preferred sourcePolicy and excludeSelf', (t) => {
   const app = makeApp(t)
   const plugin = createPlugin(app)
 
@@ -357,7 +468,8 @@ test('fallback path is subscribed with sourcePolicy all', (t) => {
 
   const sub = app._subscriptions.find(s => s.paths.includes('navigation.speedThroughWater'))
   assert.ok(sub, 'fallback path subscription should exist')
-  assert.strictEqual(sub.sourcePolicy, 'all')
+  assert.strictEqual(sub.sourcePolicy, 'preferred')
+  assert.strictEqual(sub.excludeSelf, true)
 
   plugin.stop()
 })
