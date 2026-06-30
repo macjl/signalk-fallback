@@ -27,6 +27,11 @@
     "node": ">=18.0.0"
   },
   "signalk-plugin-enabled-by-default": false,
+  "signalk": {
+    "screenshots": [
+      "screenshots/config.png"
+    ]
+  },
   "peerDependencies": {
     "@signalk/server-api": "^2.0.0"
   }
